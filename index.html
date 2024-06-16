@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plinko Game</title>
+  </head>
+  <style>
+    canvas {
+      background-color: black;
+    }
+
+    #add-ball {
+      position: relative;
+      top: 10px;
+      right: 10px;
+      background-color: #0f0;
+      padding: 10px;
+      cursor: pointer;
+    }
+  </style>
+  <body>
+    <canvas id="gameCanvas" width="800" height="800"></canvas>
+    <div id="add-ball">Add Ball</div>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      //audios
+      const betSound = new Audio("./bet.mp3");
+
+      //constants
+      const DECIMAL_MULTIPLIER = 10000;
+      const WIDTH = 800;
+      const HEIGHT = 800;
+      const BALL_RADIUS = 7;
+      const BALL_COLOR = "#ffff1a";
+      const OBSTACLE_RADIUS = 4;
+      const GRAVITY = pad(0.2);
+      const HORIZONATAL_FRICTION = 0.15;
+      const VERTICAL_FRICTION = 0.5;
+
+      const ROWS = 16;
+      const H_SPACING = 43;
+      const V_SPACING = 35;
+
+      const SINK_WIDTH = 43;
+      const NUM_SINKS = 15;
+      const SINK_ATTRIBUTES = [
+        {
+          color: "#FF003F",
+          text: "16x",
+        },
+        {
+          color: "#FF1837",
+          text: "9x",
+        },
+        {
+          color: "#FF302F",
+          text: "2x",
+        },
+        {
+          color: "#FF6020",
+          text: "1.4x",
+        },
+        {
+          color: "#FF7818",
+          text: "1.2x",
+        },
+        {
+          color: "#FF7818",
+          text: "1.2x",
+        },
+        {
+          color: "#FFC000",
+          text: "0.5x",
+        },
+        {
+          color: "#FFC000",
+          text: "0.5x",
+        },
+
+        {
+          color: "#FFC000",
+          text: "0.5x",
+        },
+
+        {
+          color: "#FF7818",
+          text: "1.2x",
+        },
+        {
+          color: "#FF7818",
+          text: "1.2x",
+        },
+        {
+          color: "#FF6020",
+          text: "1.4x",
+        },
+
+        {
+          color: "#FF302F",
+          text: "2x",
+        },
+
+        {
+          color: "#FF1837",
+          text: "9x",
+        },
+
+        {
+          color: "#FF003F",
+          text: "16x",
+        },
+      ];
+
+      let balls = [];
+      const obstacles = [];
+      const sinks = [];
+
+      function pad(n) {
+        return n * DECIMAL_MULTIPLIER;
+      }
+
+      function unpad(n) {
+        return Math.floor(n / DECIMAL_MULTIPLIER);
+      }
+
+      for (let row = 2; row < ROWS; row++) {
+        const numObstacles = row + 1;
+        const y = 0 + row * V_SPACING;
+
+        for (let col = 0; col < numObstacles; col++) {
+          const x = WIDTH / 2 - H_SPACING * (row / 2 - col);
+          obstacles.push({
+            x: pad(x),
+            y: pad(y),
+            radius: OBSTACLE_RADIUS,
+          });
+        }
+      }
+
+      for (let i = 0; i < NUM_SINKS; i++) {
+        const x = WIDTH / 2 + (i - 7.5) * SINK_WIDTH + OBSTACLE_RADIUS;
+        const y = HEIGHT - 230;
+        const width = SINK_WIDTH;
+        const height = SINK_WIDTH;
+        const sinkAttributes = SINK_ATTRIBUTES[i];
+        sinks.push({
+          x,
+          y,
+          width,
+          height,
+          color: sinkAttributes.color,
+          text: sinkAttributes.text,
+        });
+      }
+
+      class Ball {
+        constructor(x, y, radius, color) {
+          this.x = x;
+          this.y = y;
+          this.radius = radius;
+          this.color = color;
+          this.vx = 0;
+          this.vy = 0;
+          this.pocketSound = new Audio("./pocket.mp3");
+        }
+
+        draw() {
+          ctx.beginPath();
+          ctx.arc(unpad(this.x), unpad(this.y), this.radius, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.fill();
+          ctx.closePath();
+        }
+
+        playSound() {
+          this.pocketSound.play();
+        }
+
+        update() {
+          this.vy += GRAVITY;
+          this.x += this.vx;
+          this.y += this.vy;
+
+          //Collision with obstacles
+          obstacles.forEach((obstacle) => {
+            const dist = Math.hypot(this.x - obstacle.x, this.y - obstacle.y);
+            if (dist < pad(this.radius + obstacle.radius)) {
+              const angle = Math.atan2(
+                this.y - obstacle.y,
+                this.x - obstacle.x
+              );
+
+              const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+              this.vx += Math.cos(angle) * speed * HORIZONATAL_FRICTION;
+              this.vy += Math.sin(angle) * speed * VERTICAL_FRICTION;
+
+              const overlap = this.radius + obstacle.radius - unpad(dist);
+              this.x += pad(Math.cos(angle) * overlap);
+              this.y += pad(Math.sin(angle) * overlap);
+            }
+          });
+
+          sinks.forEach((sink) => {
+            if (
+              unpad(this.x) > sink.x - sink.width / 2 &&
+              unpad(this.x) < sink.x + sink.width / 2 &&
+              unpad(this.y) + this.radius > sink.y - sink.height / 2
+            ) {
+              //remove ball  this.vx = 0;
+              sink.y = sink.y+10;
+              setTimeout(() => {
+                sink.y = sink.y-10;
+              }, 100);
+              this.vy = 0;
+              this.playSound();
+              balls = balls.filter((ball) => ball !== this);
+            }
+          });
+        }
+      }
+
+      const initialBall = new Ball(
+        pad(WIDTH / 2 + 23),
+        pad(50),
+        BALL_RADIUS,
+        BALL_COLOR
+      );
+
+      balls.push(initialBall);
+
+      function drawObstacles() {
+        ctx.fillStyle = "white";
+        obstacles.forEach((obstacle) => {
+          ctx.beginPath();
+          ctx.arc(
+            unpad(obstacle.x),
+            unpad(obstacle.y),
+            obstacle.radius,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          ctx.closePath();
+        });
+      }
+
+      function drawSinks() {
+        sinks.forEach((sink) => {
+          ctx.fillStyle = sink.color;
+          ctx.beginPath();
+          ctx.roundRect(
+            sink.x,
+            sink.y - sink.height / 2,
+            sink.width - OBSTACLE_RADIUS * 2,
+            sink.height,
+            5
+          );
+          ctx.fill();
+          let font = "bold " + sink.width / 3.2 + "px 'Courier New', monospace";
+          ctx.font = font;
+          ctx.fillStyle = "black";
+          let text = sink.text;
+          let height = ctx.measureText(text).width;
+          let width = ctx.measureText(text).width;
+          let widthWithNoText = sink.width - width;
+          ctx.fillText(text, sink.x + widthWithNoText / 4, sink.y, width);
+        });
+      }
+
+      const minValue = pad(WIDTH / 2 - H_SPACING - OBSTACLE_RADIUS);
+      const maxValue = pad(WIDTH / 2 + H_SPACING + OBSTACLE_RADIUS);
+      function addBall() {
+        const newBall = new Ball(
+          randomIntFromInterval(minValue, maxValue),
+          pad(50),
+          BALL_RADIUS,
+          BALL_COLOR
+        );
+        balls.push(newBall);
+      }
+
+      function runSimulation() {
+        betSound.play();
+        for (let i = 1; i <= 50; i++) {
+          addBall();
+        }
+      }
+
+      document
+        .getElementById("add-ball")
+        .addEventListener("click", runSimulation);
+
+      function draw() {
+        ctx.clearRect(0, 0, WIDTH, HEIGHT);
+        drawObstacles();
+        drawSinks();
+        balls.forEach((ball) => {
+          ball.draw();
+          ball.update();
+        });
+      }
+
+      function animate() {
+        draw();
+        requestAnimationFrame(animate);
+      }
+
+      function randomIntFromInterval(min, max) {
+        return Math.floor(Math.random() * (max - min + 1) + min);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
